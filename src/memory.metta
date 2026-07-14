@@ -10,7 +10,7 @@
           (configure maxFeedback 50000)
           (configure maxRecallItems 20)
           (configure maxEpisodeRecallLines 20)
-          (configure maxHistory 30000)
+          (configure maxHistory 8000)
           (configure embeddingprovider Local) ;OpenAI or Local
           (if (== (embeddingprovider) Local)
               (py-call (lib_llm_ext.initLocalEmbedding)) _)))

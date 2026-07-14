@@ -214,7 +214,7 @@ def _get_provider(name: str) -> Optional[AIProvider]:
 # Register all providers (cheap - just stores config)
 _register_provider(name="ASICloud", var_name="ASI_API_KEY", model_name="minimax/minimax-m2.5", base_url="https://inference.asicloud.cudos.org/v1")
 _register_provider(name="Anthropic", var_name="ANTHROPIC_API_KEY", model_name="claude-opus-4-6", base_url="https://api.anthropic.com/v1/")
-_register_provider(name="Ollama-local", var_name="OLLAMA_API_KEY", model_name="qwen3.5:9b", base_url="http://localhost:11434/v1")
+_register_provider(name="Ollama-local", var_name="OLLAMA_API_KEY", model_name="gemma4", base_url="http://localhost:11434/v1")
 _register_provider_instance(AsiOneProvider(name="ASIOne", var_name="ASIONE_API_KEY", model_name="asi1-ultra", base_url="https://api.asi1.ai/v1"))
 _register_provider_instance(OpenRouterProvider(name="OpenRouter", var_name="OPENROUTER_API_KEY", model_name="z-ai/glm-5.1", base_url="https://openrouter.ai/api/v1"))
 _register_provider_instance(TestProvider())
@@ -222,10 +222,11 @@ _register_provider_instance(OpenAIProvider(name="OpenAI", var_name="OPENAI_API_K
 
 
 def callProvider(provider_name: str, content: str, max_tokens: int = 6000, reasoning: str = "medium") -> str:
-    """Generic dispatcher for MeTTa."""
-    provider = _get_provider(provider_name)
+    """Generic dispatcher for MeTTa. The 'provider' env var always wins over MeTTa's default."""
+    name = os.environ.get("provider", provider_name)
+    provider = _get_provider(name)
     if not provider or not provider.is_available:
-        raise RuntimeError(f"Provider '{provider_name}' not available")
+        raise RuntimeError(f"Provider '{name}' not available")
     return provider.chat(content=content, max_tokens=max_tokens, reasoning=reasoning)
 
 
