@@ -104,13 +104,17 @@ RUN usermod -a -G tty www-data
 RUN mkdir /opt/nginx
 RUN chown www-data:www-data /opt/nginx
 RUN chmod 0700 /opt/nginx
-COPY --chown=www-data:www-data --chmod=0600 ./proxy/* /opt/nginx/
+COPY --chown=www-data:www-data ./proxy/* /opt/nginx/
+RUN find /opt/nginx/ -type f -exec chmod 0600 {} \;
 
 ENV OMEGACLAW_DIR=/PeTTa/repos/OmegaClaw-Core
 ENV MEMORY_DIR=${OMEGACLAW_DIR}/memory
 
 # Bring in only local OmegaClaw source (filtered by .dockerignore).
 COPY . ${OMEGACLAW_DIR}
+
+# Copy proxy to /opt so git-import cannot overwrite it.
+COPY llm_proxy.py /opt/llm_proxy.py
 
 RUN cp ${OMEGACLAW_DIR}/run.metta /PeTTa/run.metta \
  && mkdir -p ${MEMORY_DIR}/chroma_db \
