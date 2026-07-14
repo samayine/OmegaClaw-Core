@@ -1,0 +1,20 @@
+services:
+  omegaclaw-alis:
+    build: .
+    container_name: omegaclaw-alis
+    ports:
+      - "5051:5050"
+    environment:
+      - provider=Ollama-local
+      - LLM=gemma4
+      - OLLAMA_API_KEY=ollama
+      - LLM_SERVER_LOCAL_URL=http://202.181.159.222:8001
+      # ALIS API — required; set both variables to connect to your ALIS server
+      - ALIS_API_BASE_URL=${ALIS_API_BASE_URL}
+      - ALIS_API_TOKEN=${ALIS_API_TOKEN}
+    volumes:
+      - omegaclaw-alis-memory:/PeTTa/repos/OmegaClaw-Core/memory
+    restart: unless-stopped
+
+volumes:
+  omegaclaw-alis-memory:
