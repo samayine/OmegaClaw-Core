@@ -9,8 +9,8 @@
 (= (spamShield) (empty))
 
 (= (initLoop)
-   (progn (configure maxNewInputLoops 50) ;20
-          (configure maxWakeLoops 1)
+   (progn (configure maxNewInputLoops 20)
+          (configure maxWakeLoops -1) ;-1=disabled, no LLM calls when idle
           (configure spamShield True)
           (configure sleepInterval 1) ;10
           (configure LLM gpt-5.4)
@@ -20,16 +20,17 @@
           (configure wakeupInterval 600) ;600=10 minutes
           (change-state! &prevmsg "")
           (change-state! &lastresults "")
-          (change-state! &loops (maxNewInputLoops))))
+          (change-state! &nextWakeAt (+ (get_time) (wakeupInterval)))
+          (change-state! &loops 0))) ;start idle — loops only reset to maxNewInputLoops when a real message arrives
 
 (= (getContext)
    (string-safe (py-str ("PROMPT: " (getPrompt) " SKILLS: " (getSkills)
-                         " OUTPUT_FORMAT: Up to 5 lines, do not wrap quotes around args, do not use variables:" (newline)
-                         " toolName1 arg1" (newline)
-                         " toolName2 arg2" (newline)
-                         " toolName3 arg3" (newline)
-                         " toolName4 arg4" (newline)
-                         " toolName5 arg5" (newline)
+                         " OUTPUT_FORMAT: Skill calls only — no prose. Use metta for PLN inference before sending. ALWAYS end with send. Up to 6 lines, no quotes around args, no variables:" (newline)
+                         " get_patient patient_id" (newline)
+                         " query PC31M" (newline)
+                         " query PC36M" (newline)
+                         " metta (|~ ((Implication (Inheritance patient HighPC31) (Inheritance patient CardioRisk)) (stv 0.85 0.90)) ((Inheritance patient HighPC31) (stv 0.95 0.85)))" (newline)
+                         " send your_final_answer_citing_actual_numbers" (newline)
                          " LAST_SKILL_USE_RESULTS: " (last_chars (get-state &lastresults) (maxFeedback)) " HISTORY: " (getHistory) " TIME: " (get_time_as_string)))))
 
 (= (HandleError $msg $cmd $sexpr)
@@ -51,16 +52,17 @@
                                              (if (> (string_length $msgrcv) 0) (change-state! &prevmsg $msgrcv) _)))
                              ($msg (get-state &prevmsg))
                              ($_ (if (and (> $k 1) $msgnew)
-                                     (change-state! &loops (maxNewInputLoops)) _)))
+                                     (progn (change-state! &loops (maxNewInputLoops))
+                                            (change-state! &lastsend "")) _)))
                             (if (> (get-state &loops) 0)
-                                (let* (($lastmessage (if $msgnew (HUMAN-MSG: $msg) (if (spamShield) " DO NOT RE-SEND OR SPAM!" "")))
+                                (let* (($lastmessage (if $msgnew (HUMAN-MSG: $msg) (if (> (string_length $msg) 0) "(CONTINUE: Data is now in LAST_SKILL_USE_RESULTS. Read it and call send with your final clinical answer citing actual numbers.)" (if (spamShield) " DO NOT RE-SEND OR SPAM!" ""))))
                                        ($_ (change-state! &nextWakeAt (+ (get_time) (wakeupInterval))))
                                        ($_ (println! $lastmessage))
                                        ($send (py-str ($prompt :-:-:-: $lastmessage)))
                                        ($_ (println! (CHARS_SENT: (string_length $send) $send)))
                                        ($respi (py-call (lib_llm_ext.callProvider (provider) $send (maxOutputToken) (reasoningMode))))
                                        ($resp (py-call (helper.balance_parentheses $respi)))
-                                       ($response (if (== "(" (first_char $resp)) $resp (progn (println! $resp) (repr (REMEMBER:OUTPUT_NOTHING_ELSE_THAN: ((skill arg) ...))))))
+                                       ($response (if (== "(" (first_char $resp)) $resp (progn (println! $resp) (let $sent (py-call (http_channel.send_message $resp)) (if (== $sent "sent") (progn (change-state! &prevmsg "") (change-state! &loops 0)) _)) (repr ()))))
                                        ($sexpr (catch (sread $response)))
                                        ($_ (change-state! &error ()))
                                        ($_ (HandleError MULTI_COMMAND_FAILURE_NOTHING_WAS_DONE_PLEASE_CORRECT_PARENTHESES_AND_USE_QUOTES_AND_RETRY $response $sexpr))
