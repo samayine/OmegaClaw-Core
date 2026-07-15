@@ -1,11 +1,17 @@
 # embedded vector store
 memory/chroma_db/
+knowledge_db/
+chroma_db/
 
 # pulled in repos
 repos/
 
 # secrets
 .env
+memory/.channel/
+
+# venv
+.venv 
 
 # editor backup files
 *~
@@ -17,4 +23,7 @@ Autotests/logs/
 
 # IDE
 .idea/
-.venv/
+
+# logs
+logs/*.log
+logs/*.log.*
