@@ -73,7 +73,7 @@ class FileSystemPolicy:
                 ro = []
             rw = fs.get('read_write', [])
             if rw is None:
-                ro = []
+                rw = []
             if policy.get('include_workdir'):
                 rw.append(os.getcwd())
         self._read_only = [Path(f'{p}') for p in ro]
