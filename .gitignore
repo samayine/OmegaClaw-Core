@@ -26,4 +26,4 @@ Autotests/logs/
 
 # logs
 logs/*.log
-logs/*.log.*
+logs/*.log.**.md

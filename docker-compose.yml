@@ -5,15 +5,17 @@ services:
     ports:
       - "5051:5050"
     environment:
-      - provider=Ollama-local
-      - LLM=gemma4
-      - OLLAMA_API_KEY=ollama
-      - LLM_SERVER_LOCAL_URL=http://202.181.159.222:8001
+      - provider=Gemini
+      - LLM=gemini-2.5-flash
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GATEWAY_URL=
       # ALIS API — required; set both variables to connect to your ALIS server
       - ALIS_API_BASE_URL=${ALIS_API_BASE_URL}
       - ALIS_API_TOKEN=${ALIS_API_TOKEN}
     volumes:
       - omegaclaw-alis-memory:/PeTTa/repos/OmegaClaw-Core/memory
+      - ./lib_llm_ext.py:/PeTTa/repos/OmegaClaw-Core/lib_llm_ext.py
+      - ./entrypoint.sh:/PeTTa/repos/OmegaClaw-Core/entrypoint.sh
     restart: unless-stopped
 
 volumes:

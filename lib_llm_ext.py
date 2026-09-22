@@ -80,7 +80,7 @@ class AIProvider(AbstractAIProvider):
     def _create_client(self) -> Optional[openai.OpenAI]:
         """Create OpenAI client from environment."""
         proxy_url = os.environ.get("GATEWAY_URL")
-        if proxy_url:
+        if proxy_url and False:
             prefix = self._name.lower()
             base_url = f"{proxy_url.rstrip('/')}/{prefix}/"
             logger.info(f"[lib_llm_ext.AIProvider._create_client]: Connecting via proxy: {base_url}")
@@ -342,6 +342,7 @@ _register_provider_instance(OpenRouterProvider(name="OpenRouter", var_name="OPEN
 _register_provider_instance(OpenRouterProvider(name="MiniMaxM3", var_name="OPENROUTER_API_KEY", model_name="minimax/minimax-m3", base_url="https://openrouter.ai/api/v1"))
 _register_provider_instance(TestProvider())
 _register_provider_instance(OpenAIProvider(name="OpenAI", var_name="OPENAI_API_KEY", model_name="gpt-5.5", base_url="https://api.openai.com/v1"))
+_register_provider(name="Gemini", var_name="GEMINI_API_KEY", model_name="gemini-2.5-flash", base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
 
 
 def callProvider(provider_name: str, content: str, max_tokens: int = 6000, reasoning: str = "medium") -> str:
