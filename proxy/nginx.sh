@@ -8,6 +8,10 @@ set -eu
 # automatically. At some point this parameter should be parsed in the
 # entrypoint as well.
 export MM_UPSTREAM_URL=${MM_URL:-https://chat.singularitynet.io}
+if ! printf '%s' "${HTTP_AUTH_TOKEN:-}" | grep -Eq '^[A-Za-z0-9_-]{32,}$'; then
+    echo "HTTP_AUTH_TOKEN must be a URL-safe token of at least 32 characters" >&2
+    exit 1
+fi
 SUBST_VARS=$(grep -o '\${[A-Z_0-9]*}' /opt/nginx/nginx.conf.template | sort -u | tr '\n' ' ')
 NGINX_CONFIG=/opt/nginx/nginx.conf
 touch "${NGINX_CONFIG}"
@@ -17,4 +21,3 @@ envsubst "$SUBST_VARS" \
     > "${NGINX_CONFIG}"
 
 nginx -c "${NGINX_CONFIG}"
-

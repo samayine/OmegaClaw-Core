@@ -3,7 +3,9 @@ services:
     build: .
     container_name: omegaclaw-alis
     ports:
-      - "5051:5050"
+      # The authenticated nginx ingress is intentionally local-only. Put a
+      # TLS-terminating, authenticated reverse proxy in front of it to expose it.
+      - "127.0.0.1:5051:5050"
     environment:
       - provider=Ollama-local
       - LLM=gemma4
@@ -12,6 +14,10 @@ services:
       # ALIS API — required; set both variables to connect to your ALIS server
       - ALIS_API_BASE_URL=${ALIS_API_BASE_URL}
       - ALIS_API_TOKEN=${ALIS_API_TOKEN}
+      # Generate with: openssl rand -base64 48 | tr '+/' '-_' | tr -d '='
+      - HTTP_AUTH_TOKEN=${HTTP_AUTH_TOKEN:?Set HTTP_AUTH_TOKEN to a 32+ character URL-safe token}
+      - HTTP_MAX_BODY_BYTES=16384
+    command: ["HTTP_PORT=5051"]
     volumes:
       - omegaclaw-alis-memory:/PeTTa/repos/OmegaClaw-Core/memory
     restart: unless-stopped

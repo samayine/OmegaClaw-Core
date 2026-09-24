@@ -7,6 +7,8 @@ events {
 }
 
 http {
+    limit_req_zone $binary_remote_addr zone=agent_query_rate:10m rate=10r/m;
+    limit_conn_zone $binary_remote_addr zone=agent_query_conn:10m;
     client_body_temp_path /tmp/client_body;
     proxy_temp_path       /tmp/proxy;
     fastcgi_temp_path     /tmp/fastcgi;
@@ -20,6 +22,38 @@ http {
     proxy_connect_timeout 30s;
     proxy_send_timeout    120s;
     proxy_read_timeout    120s;
+
+    # Public-facing agent ingress. The backend runs as the untrusted agent user
+    # and never receives HTTP_AUTH_TOKEN; nginx is the authentication boundary.
+    server {
+        listen 5050;
+        server_tokens off;
+        client_max_body_size 16k;
+
+        location = /query {
+            limit_req zone=agent_query_rate burst=2 nodelay;
+            limit_conn agent_query_conn 1;
+
+            if ($http_authorization != "Bearer ${HTTP_AUTH_TOKEN}") {
+                add_header WWW-Authenticate 'Bearer realm="OmegaClaw"' always;
+                return 401;
+            }
+
+            proxy_pass http://127.0.0.1:5051;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 15s;
+            proxy_read_timeout 125s;
+        }
+
+        location / {
+            default_type application/json;
+            return 404 '{"error":"not_found"}';
+        }
+    }
 
     server {
         listen 8080;
@@ -153,4 +187,3 @@ http {
         }
     }
 }
-

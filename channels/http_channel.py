@@ -1,6 +1,7 @@
 import json
+import os
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 _lock = threading.Lock()
 _last_message = ""
@@ -14,24 +15,87 @@ _send_allowed = False  # True only after first empty getLastMessage (data-fetch 
 HTTP_TIMEOUT = 120  # seconds to wait for OmegaClaw to respond
 
 
+def _positive_int_env(name, default, minimum=1, maximum=None):
+    """Read a bounded positive integer without making startup fragile."""
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    if value < minimum or (maximum is not None and value > maximum):
+        return default
+    return value
+
+
+# Keep these bounded even if an operator sets an incorrect environment value.
+HTTP_MAX_BODY_BYTES = _positive_int_env("HTTP_MAX_BODY_BYTES", 16 * 1024, maximum=1024 * 1024)
+HTTP_MAX_MESSAGE_CHARS = _positive_int_env("HTTP_MAX_MESSAGE_CHARS", 12 * 1024, maximum=1024 * 1024)
+
+
+def _read_json_body(handler):
+    """Return a validated query payload, or ``(None, status, message)``.
+
+    Authentication and rate limiting are deliberately enforced by nginx, before
+    traffic reaches this process.  This process runs as the agent user, so it
+    must never receive the ingress bearer token in its environment.
+    """
+    content_type = handler.headers.get("Content-Type", "")
+    if content_type.split(";", 1)[0].strip().lower() != "application/json":
+        return None, 415, "Content-Type must be application/json"
+
+    raw_length = handler.headers.get("Content-Length")
+    try:
+        length = int(raw_length)
+    except (TypeError, ValueError):
+        return None, 411, "Content-Length is required"
+    if length < 0:
+        return None, 400, "Invalid Content-Length"
+    if length > HTTP_MAX_BODY_BYTES:
+        return None, 413, "Request body is too large"
+
+    try:
+        body = handler.rfile.read(length)
+        data = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, 400, "Request body must be valid JSON"
+
+    if not isinstance(data, dict):
+        return None, 400, "Request body must be a JSON object"
+    message = data.get("message", "")
+    patient_id = data.get("patient_id", "")
+    if not isinstance(message, str) or not isinstance(patient_id, str):
+        return None, 400, "message and patient_id must be strings"
+    if len(message) > HTTP_MAX_MESSAGE_CHARS or len(patient_id) > 256:
+        return None, 413, "Request fields are too large"
+    return (message, patient_id), None, None
+
+
 class _Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def setup(self):
+        super().setup()
+        # Bound slow clients which otherwise occupy a ThreadingHTTPServer worker.
+        self.connection.settimeout(10)
+
+    def _send_json(self, status, payload):
+        encoded = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(encoded)
+
     def do_POST(self):
         if self.path != "/query":
-            self.send_response(404)
-            self.end_headers()
+            self._send_json(404, {"error": "not_found"})
             return
 
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
-        try:
-            data = json.loads(body)
-        except Exception:
-            self.send_response(400)
-            self.end_headers()
+        payload, status, error = _read_json_body(self)
+        if error:
+            self._send_json(status, {"error": error})
             return
-
-        message = data.get("message", "")
-        patient_id = data.get("patient_id", "")
+        message, patient_id = payload
 
         if patient_id:
             message = f"[patient_id:{patient_id}] {message}"
@@ -45,27 +109,27 @@ class _Handler(BaseHTTPRequestHandler):
             event = threading.Event()
             _response_events[req_id] = event
 
-        print(f"[HTTP] Received query (req_id={req_id}): {message[:80]}...")
+        # Do not put prompts, patient IDs, or PHI in process logs.
+        print(f"[HTTP] Received authenticated query (req_id={req_id}, chars={len(message)}, patient_context={bool(patient_id)})")
         event.wait(timeout=HTTP_TIMEOUT)
 
         with _lock:
             answer = _responses.pop(req_id, "OmegaClaw did not respond in time.")
             _response_events.pop(req_id, None)
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"answer": answer}).encode())
+        self._send_json(200, {"answer": answer})
 
     def log_message(self, format, *args):
         pass  # silence default access log
 
 
-def start_http(port=5050):
-    server = HTTPServer(("0.0.0.0", int(port)), _Handler)
+def start_http(port=5050, host=None):
+    """Start the loopback-only backend used by the authenticated nginx proxy."""
+    bind_host = host or os.environ.get("HTTP_BIND_HOST", "127.0.0.1")
+    server = ThreadingHTTPServer((bind_host, int(port)), _Handler)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
-    print(f"[HTTP] OmegaClaw HTTP channel listening on :{port}")
+    print(f"[HTTP] OmegaClaw HTTP backend listening on {bind_host}:{port}")
     return t
 
 
