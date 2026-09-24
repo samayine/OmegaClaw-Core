@@ -1,7 +1,7 @@
 import json
 import os
 import threading
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 _lock = threading.Lock()
 _last_message = ""
@@ -74,7 +74,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def setup(self):
         super().setup()
-        # Bound slow clients which otherwise occupy a ThreadingHTTPServer worker.
+        # Bound slow clients so a partially sent request cannot block the channel.
         self.connection.settimeout(10)
 
     def _send_json(self, status, payload):
@@ -126,7 +126,9 @@ class _Handler(BaseHTTPRequestHandler):
 def start_http(port=5050, host=None):
     """Start the loopback-only backend used by the authenticated nginx proxy."""
     bind_host = host or os.environ.get("HTTP_BIND_HOST", "127.0.0.1")
-    server = ThreadingHTTPServer((bind_host, int(port)), _Handler)
+    # The channel's request/response state is intentionally single-flight.
+    # Do not make this threaded until it has a FIFO queue and per-request routing.
+    server = HTTPServer((bind_host, int(port)), _Handler)
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     print(f"[HTTP] OmegaClaw HTTP backend listening on {bind_host}:{port}")
@@ -158,7 +160,7 @@ def send_message(msg):
     global _active_request_id, _send_allowed
     with _lock:
         if not _send_allowed:
-            print(f"[HTTP] Blocked premature send (no data fetched yet): {msg[:80]}")
+            print(f"[HTTP] Blocked premature send (no data fetched yet, chars={len(str(msg))})")
             return None
         req_id = _active_request_id  # always deliver to the claimed request, not the latest arrived
         if req_id and req_id in _response_events:

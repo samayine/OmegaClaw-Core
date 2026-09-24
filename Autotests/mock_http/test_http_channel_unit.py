@@ -72,6 +72,6 @@ def test_backend_binds_to_loopback_by_default(monkeypatch):
         def serve_forever(self):
             return None
 
-    monkeypatch.setattr(channel, "ThreadingHTTPServer", _Server)
+    monkeypatch.setattr(channel, "HTTPServer", _Server)
     channel.start_http(5051)
     assert captured["address"] == ("127.0.0.1", 5051)
