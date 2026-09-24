@@ -101,6 +101,26 @@ docker volume rm omegaclaw-memory
 
 ## Usage
 
+### HTTP clinical endpoint (secure default)
+
+The Docker Compose configuration exposes the HTTP API only on `127.0.0.1:5051`.
+It requires a URL-safe bearer token of at least 32 characters; the agent process
+does not receive this token. Generate and export one before starting Compose:
+
+```
+export HTTP_AUTH_TOKEN="$(openssl rand -base64 48 | tr '+/' '-_' | tr -d '=')"
+docker compose up -d
+curl --fail --json '{"message":"hello"}' \
+  -H "Authorization: Bearer $HTTP_AUTH_TOKEN" \
+  http://127.0.0.1:5051/query
+```
+
+For remote access, place a TLS-terminating reverse proxy with its own access
+controls in front of this loopback endpoint. Do not publish the container port
+directly. Requests are limited to 16 KiB, 10 per minute per client, and one
+active request per client. The endpoint is an ingress boundary only: deployment
+still requires patient-level authorization and approved LLM/ALIS data handling.
+
 Before running the system you need to choose your LLM API provider and export the API key as the environment variable.
 | Provider | Env var name | Notes |
 |---|---|---|
